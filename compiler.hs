@@ -2,7 +2,6 @@ module ProcCompiler where
 import Control.Applicative
 import Text.Megaparsec
 import Text.Megaparsec.String
-import Text.Parsec.Combinator
 import Data.List (intercalate)
 
 type Numeric = Integer
@@ -44,6 +43,8 @@ bterm = TRUE <$ tok "true" <* whitespace    --TRUE
 
 aexp :: Parser Aexp
 aexp = try(Add <$> aterm <* char '+' <*> aexp)
+     <|> try(Mult <$> aterm <* char '*' <*> aexp)
+     <|> try(Sub <$> aterm <* char '-' <*> aexp)
      <|> try(aterm)
 
 
@@ -58,10 +59,27 @@ var :: Parser Aexp
 var = V <$> vars
 
 decv :: Parser DecV
-decv = sepBY
+decv = many decvclause
+
+decvclause :: Parser (Var,Aexp)
+decvclause = try((tok "var") *> ((,) <$> vars) <* (tok ":=") <*> aexp <* try(tok ";"))
+
+decp :: Parser DecP
+decp = many decpclause
+
+decpclause :: Parser (Pname,Stm)
+decpclause = try((tok "proc") *> ((,) <$> vars) <* (tok "is") <*> stm <* try(tok ";"))
+
+block :: Parser Stm
+block = try((tok "begin") *> try(Block <$> decv) <*> try(decp) <*> try(stm) <* (tok "end"))
+
+comp :: Parser Stm
+comp = try (Comp  <$> stm <* tok ";" <*> comp)
+   <|> stm
 
 stm :: Parser Stm
 stm = Skip <$ tok "skip" <* whitespace
    <|> try(Ass <$> vars <* tok ":=" <*> aexp)
-   <|> try(tok "while" *> ((While <$> bexp ) <* (tok "do") <*> stm))
-   <|> try(tok "if" *> ((If <$> bexp) <* (tok "then") <*> stm <* (tok "else") <*> stm ))
+   <|> try(tok "while" *> ((While <$> bexp ) <* (tok "do") <*> comp))
+   <|> try(tok "if" *> ((If <$> bexp) <* (tok "then") <*> stm <* (tok "else") <*> comp))
+   <|> block
