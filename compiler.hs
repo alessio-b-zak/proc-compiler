@@ -3,6 +3,11 @@ import Control.Applicative
 import Text.Megaparsec
 import Text.Megaparsec.String
 import Data.List (intercalate)
+import Control.Monad (void)
+import System.IO
+import Text.Megaparsec.Expr
+import qualified Text.Megaparsec.Lexer as Lexer
+
 
 type Numeric = Integer
 type Var = String
@@ -20,37 +25,65 @@ data Stm = Skip | Ass Var Aexp | Comp Stm Stm
          | If Bexp Stm Stm | While Bexp Stm
          | Block DecV DecP Stm | Call Pname deriving Show
 
+
 tok :: String -> Parser String
 tok t = try (string t <* whitespace)
 
 newLine :: Parser ()
 newLine = many (oneOf "\n") *> pure ()
 
+comment :: Parser ()
+comment =  try(string "//" *> manyTill anyChar newline *> space *> pure ())
+       <|>  try(string "/*" *> manyTill anyChar (string "*/") *> space *> pure ())
+
 whitespace :: Parser ()
-whitespace = many (oneOf " \n") *> pure ()
+whitespace = Lexer.space (void spaceChar) lineComment blockComment
+  where
+    lineComment  = Lexer.skipLineComment "//"
+    blockComment = Lexer.skipBlockComment "/*" "*/"
 
 number :: Parser Numeric
 number = (some (oneOf ['0' .. '9']) >>= return . read) <* whitespace
 
-aterm :: Parser Aexp
-aterm = N <$> number <* whitespace
+
+parens :: Parser a -> Parser a
+parens p = between (tok "(") (tok ")") p
+
+aexp :: Parser Aexp
+aexp = makeExprParser aTerm aOperators
+
+aOperators = [[ InfixL (Mult <$  tok "*") ]
+  , [ InfixL (Add <$ tok "+")
+    , InfixL (Sub <$ tok "-") ]
+               ]
+
+aTerm = parens aexp
+     <|> N <$> number <* whitespace
      <|> var
+
+-- aexpressions :: Parser Aexp
+-- aexpressions = try(Add <$> aterm <* char '+' <*> aexp)
+--      <|> try(Mult <$> aterm <* char '*' <*> aexp)
+--      <|> try(Sub <$> aterm <* char '-' <*> aexp)
+--
+-- aterm :: Parser Aexp
+-- aterm = N <$> number <* whitespace
+--      <|> var
+--
+-- aexp :: Parser Aexp
+-- aexp = parens aexps
+--      <|> try(aterm)
+
+bexp :: Parser Bexp
+bexp = try(And <$> bterm <* char '&' <* whitespace <*> bexp) --And
+    <|> try(Eq <$> aTerm <* char '=' <* whitespace <*> aexp)
+    <|> try(Le <$> aTerm <* tok "<=" <*> aexp)
+    <|> try(bterm)                                           --bterminals
 
 bterm :: Parser Bexp
 bterm = TRUE <$ tok "true" <* whitespace    --TRUE
      <|> FALSE <$ tok "false" <* whitespace --FALSE
      <|> tok "!" *> return Neg <*> bexp     --Negative
-
-aexp :: Parser Aexp
-aexp = try(Add <$> aterm <* char '+' <*> aexp)
-     <|> try(Mult <$> aterm <* char '*' <*> aexp)
-     <|> try(Sub <$> aterm <* char '-' <*> aexp)
-     <|> try(aterm)
-
-
-bexp :: Parser Bexp
-bexp = try(And <$> bterm <* char '&' <* whitespace <*> bexp) --And
-    <|> try(bterm)                                           --bterminals
 
 vars :: Parser Var
 vars = (some (oneOf ['a' .. 'z'])) <* whitespace
@@ -74,12 +107,16 @@ block :: Parser Stm
 block = try((tok "begin") *> try(Block <$> decv) <*> try(decp) <*> try(stm) <* (tok "end"))
 
 comp :: Parser Stm
-comp = try (Comp  <$> stm <* tok ";" <*> comp)
-   <|> stm
+comp =  try((Comp  <$> stm <* tok ";") <* whitespace <*> bigstm)
+
+bigstm :: Parser Stm
+bigstm = try(whitespace *> comp)
+      <|> whitespace *> stm
 
 stm :: Parser Stm
 stm = Skip <$ tok "skip" <* whitespace
-   <|> try(Ass <$> vars <* tok ":=" <*> aexp)
-   <|> try(tok "while" *> ((While <$> bexp ) <* (tok "do") <*> comp))
-   <|> try(tok "if" *> ((If <$> bexp) <* (tok "then") <*> stm <* (tok "else") <*> comp))
-   <|> block
+   <|> try(Ass <$> vars <* tok ":=" <*> aexp <* whitespace)
+   <|> try(tok "while" *> tok "(" *> ((While <$> bexp ) <* tok ")" <* (tok "do") <*> comp) <* whitespace)
+   <|> try(tok "if" *> ((If <$> bexp) <* (tok "then") <*> stm <* (tok "else") <*> comp) <* whitespace)
+   <|> block <* whitespace
+   <|> try((tok "call") *> (Call <$> vars) <* whitespace)
