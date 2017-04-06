@@ -74,16 +74,40 @@ aTerm = parens aexp
 -- aexp = parens aexps
 --      <|> try(aterm)
 
-bexp :: Parser Bexp
-bexp = try(And <$> bterm <* char '&' <* whitespace <*> bexp) --And
-    <|> try(Eq <$> aTerm <* char '=' <* whitespace <*> aexp)
-    <|> try(Le <$> aTerm <* tok "<=" <*> aexp)
-    <|> try(bterm)                                           --bterminals
+-- bexp :: Parser Bexp
+-- bexp = try(And <$> bterm <* char '&' <* whitespace <*> bexp) --And
+--     <|> try(Eq <$> aTerm <* char '=' <* whitespace <*> aexp)
+--     <|> try(Le <$> aTerm <* tok "<=" <*> aexp)
+--     <|> try(bterm)                                           --bterminals
 
-bterm :: Parser Bexp
-bterm = TRUE <$ tok "true" <* whitespace    --TRUE
+bTerm :: Parser Bexp
+bTerm = parens bexpr
+     <|> TRUE <$ tok "true" <* whitespace    --TRUE
      <|> FALSE <$ tok "false" <* whitespace --FALSE
-     <|> tok "!" *> return Neg <*> bexp     --Negative
+     <|> rExpr   --Negative
+
+
+
+rExpr :: Parser Bexp
+rExpr = do
+ a1 <- aexp
+ op <- relation
+ a2 <- aexp
+ return (op a1 a2)
+
+
+relation = (tok "=" *> pure Eq)
+ <|> (tok "=<" *> pure Le)
+
+bexpr :: Parser Bexp
+bexpr = makeExprParser bTerm bOperators
+
+
+bOperators :: [[Operator Parser Bexp]]
+bOperators =
+  [ [Prefix (Neg <$ tok "!") ]
+  , [InfixL (And <$ tok "&")]
+  ]
 
 vars :: Parser Var
 vars = (some (oneOf ['a' .. 'z'])) <* whitespace
@@ -103,20 +127,44 @@ decp = many decpclause
 decpclause :: Parser (Pname,Stm)
 decpclause = try((tok "proc") *> ((,) <$> vars) <* (tok "is") <*> stm <* try(tok ";"))
 
-block :: Parser Stm
-block = try((tok "begin") *> try(Block <$> decv) <*> try(decp) <*> try(stm) <* (tok "end"))
+blockParse :: Parser Stm
+blockParse = (tok "begin") *> (Block <$> decv) <*> decp <*> stm <* (tok "end")
+
+ifParse :: Parser Stm
+ifParse = tok "if" *> ((If <$> bexpr) <* (tok "then") <*> stm <* (tok "else") <*> stm) <* whitespace
+
+whileParse :: Parser Stm
+whileParse = tok "while" *>  ((While <$> bexpr ) <* (tok "do") <*> bigstm) <* whitespace
+
+assParse :: Parser Stm
+assParse = Ass <$> vars <* tok ":=" <*> aexp <* whitespace
+
+callParse :: Parser Stm
+callParse = (tok "call") *> (Call <$> vars) <* whitespace
 
 comp :: Parser Stm
 comp =  try((Comp  <$> stm <* tok ";") <* whitespace <*> bigstm)
 
+skipParse :: Parser Stm
+skipParse = Skip <$ tok "skip" <* whitespace
+
 bigstm :: Parser Stm
-bigstm = try(whitespace *> comp)
-      <|> whitespace *> stm
+bigstm = parens bigstm
+      <|> try(whitespace *>  comp)
+      <|>  stm
+
+-- stm :: Parser Stm
+-- stm = Skip <$ tok "skip" <* whitespace
+--    <|> try(Ass <$> vars <* tok ":=" <*> aexp <* whitespace)
+--    <|> try(tok "while" *>  ((While <$> bexpr ) <* (tok "do") <*> comp) <* whitespace)
+--    <|> try(tok "if" *> ((If <$> bexpr) <* (tok "then") <*> stm <* (tok "else") <*> comp) <* whitespace)
+--    <|> block <* whitespace
+--    <|> try((tok "call") *> (Call <$> vars) <* whitespace)
 
 stm :: Parser Stm
-stm = Skip <$ tok "skip" <* whitespace
-   <|> try(Ass <$> vars <* tok ":=" <*> aexp <* whitespace)
-   <|> try(tok "while" *> tok "(" *> ((While <$> bexp ) <* tok ")" <* (tok "do") <*> comp) <* whitespace)
-   <|> try(tok "if" *> ((If <$> bexp) <* (tok "then") <*> stm <* (tok "else") <*> comp) <* whitespace)
-   <|> block <* whitespace
-   <|> try((tok "call") *> (Call <$> vars) <* whitespace)
+stm= skipParse
+   <|> ifParse
+   <|> whileParse
+   <|> blockParse
+   <|> callParse
+   <|> assParse
