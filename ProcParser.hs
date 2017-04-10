@@ -1,4 +1,4 @@
-module ProcCompiler where
+module ProcParser where
 import Control.Applicative
 import Text.Megaparsec
 import Text.Megaparsec.String
@@ -87,7 +87,6 @@ bTerm = parens bexpr
      <|> rExpr   --Negative
 
 
-
 rExpr :: Parser Bexp
 rExpr = do
  a1 <- aexp
@@ -96,8 +95,8 @@ rExpr = do
  return (op a1 a2)
 
 
-relation = (tok "=" *> pure Eq)
- <|> (tok "=<" *> pure Le)
+relation = try(tok "=" *> pure Eq)
+ <|> try(tok "<=" *> pure Le)
 
 bexpr :: Parser Bexp
 bexpr = makeExprParser bTerm bOperators
@@ -151,7 +150,7 @@ skipParse = Skip <$ tok "skip" <* whitespace
 bigstm :: Parser Stm
 bigstm = parens bigstm
       <|> try(whitespace *>  comp)
-      <|>  stm
+      <|> stm
 
 -- stm :: Parser Stm
 -- stm = Skip <$ tok "skip" <* whitespace
@@ -168,3 +167,6 @@ stm= skipParse
    <|> blockParse
    <|> callParse
    <|> assParse
+
+parseProc :: Parser a -> String -> Maybe a
+parseProc x = parseMaybe x
