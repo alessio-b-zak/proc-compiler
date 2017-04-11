@@ -142,11 +142,15 @@ callParse :: Parser Stm
 callParse = (tok "call") *> (Call <$> vars) <* whitespace
 
 compParse :: Parser Stm
-compParse =  try((Comp  <$> bigstm <* tok ";") <* whitespace <*> bigstm)
+compParse =  try((Comp  <$> stmParens <* tok ";") <* whitespace <*> bigstm)
 
 skipParse :: Parser Stm
 skipParse = Skip <$ tok "skip" <* whitespace
 
+stmParens :: Parser Stm
+stmParens = try(whitespace *> parens compParse)
+         <|> try(whitespace *> stm)
+         <|> try(whitespace *> parens stm)
 
 stmTerm :: Parser Stm
 stmTerm = compParse <|> try(whitespace *> stm)
