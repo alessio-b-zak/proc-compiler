@@ -96,7 +96,7 @@ rExpr = do
 
 
 relation = try(tok "=" *> pure Eq)
- <|> try(tok "<=" *> pure Le)
+ <|> try(tok "<" *> pure Le)
 
 bexpr :: Parser Bexp
 bexpr = makeExprParser bTerm bOperators
@@ -118,19 +118,19 @@ decv :: Parser DecV
 decv = many decvclause
 
 decvclause :: Parser (Var,Aexp)
-decvclause = try((tok "var") *> ((,) <$> vars) <* (tok ":=") <*> aexp <* try(tok ";"))
+decvclause = try((tok "var") *> ((,) <$> vars) <* try(tok ":=") <*> aexp <* try(tok ";"))
 
 decp :: Parser DecP
 decp = many decpclause
 
 decpclause :: Parser (Pname,Stm)
-decpclause = try((tok "proc") *> ((,) <$> vars) <* (tok "is") <*> stm <* try(tok ";"))
+decpclause = try((tok "proc") *> ((,) <$> vars) <* (tok "is") <*> bigstm <* try(tok ";"))
 
 blockParse :: Parser Stm
-blockParse = (tok "begin") *> (Block <$> decv) <*> decp <*> stm <* (tok "end")
+blockParse = (tok "begin") *> (Block <$> decv) <*> decp <*> bigstm <* (tok "end")
 
 ifParse :: Parser Stm
-ifParse = tok "if" *> ((If <$> bexpr) <* (tok "then") <*> stm <* (tok "else") <*> stm) <* whitespace
+ifParse = tok "if" *> ((If <$> bexpr) <* (tok "then") <*> bigstm <* (tok "else") <*> bigstm) <* whitespace
 
 whileParse :: Parser Stm
 whileParse = tok "while" *>  ((While <$> bexpr ) <* (tok "do") <*> bigstm) <* whitespace
@@ -141,16 +141,19 @@ assParse = Ass <$> vars <* tok ":=" <*> aexp <* whitespace
 callParse :: Parser Stm
 callParse = (tok "call") *> (Call <$> vars) <* whitespace
 
-comp :: Parser Stm
-comp =  try((Comp  <$> stm <* tok ";") <* whitespace <*> bigstm)
+compParse :: Parser Stm
+compParse =  try((Comp  <$> bigstm <* tok ";") <* whitespace <*> bigstm)
 
 skipParse :: Parser Stm
 skipParse = Skip <$ tok "skip" <* whitespace
 
+
+stmTerm :: Parser Stm
+stmTerm = compParse <|> try(whitespace *> stm)
+
 bigstm :: Parser Stm
-bigstm = parens bigstm
-      <|> try(whitespace *>  comp)
-      <|> stm
+bigstm = try(whitespace *> parens bigstm)
+      <|> (whitespace *> stmTerm)
 
 -- stm :: Parser Stm
 -- stm = Skip <$ tok "skip" <* whitespace
@@ -161,7 +164,7 @@ bigstm = parens bigstm
 --    <|> try((tok "call") *> (Call <$> vars) <* whitespace)
 
 stm :: Parser Stm
-stm= skipParse
+stm = skipParse
    <|> ifParse
    <|> whileParse
    <|> blockParse
