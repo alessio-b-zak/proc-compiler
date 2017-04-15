@@ -124,7 +124,7 @@ decp :: Parser DecP
 decp = many decpclause
 
 decpclause :: Parser (Pname,Stm)
-decpclause = try((tok "proc") *> ((,) <$> vars) <* (tok "is") <*> bigstm <* try(tok ";"))
+decpclause = try((tok "proc") *> ((,) <$> vars) <* (tok "is") <*> bigstm' <* try(tok ";"))
 
 blockParse :: Parser Stm
 blockParse = (tok "begin") *> (Block <$> decv) <*> decp <*> bigstm <* (tok "end")
@@ -144,6 +144,9 @@ callParse = (tok "call") *> (Call <$> vars) <* whitespace
 compParse :: Parser Stm
 compParse =  try((Comp  <$> stmParens <* tok ";") <* whitespace <*> bigstm)
 
+compParse' :: Parser Stm
+compParse' =  try((Comp  <$> stmParens <* tok ";") <* whitespace <*> bigstm')
+
 skipParse :: Parser Stm
 skipParse = Skip <$ tok "skip" <* whitespace
 
@@ -151,6 +154,13 @@ stmParens :: Parser Stm
 stmParens = try(whitespace *> parens compParse)
          <|> try(whitespace *> stm)
          <|> try(whitespace *> parens stm)
+
+bigstm' :: Parser Stm
+bigstm' = try(whitespace *> parens bigstm')
+      <|> (whitespace *> stmTerm')
+
+stmTerm' :: Parser Stm
+stmTerm' = try(whitespace *> stm) <|> compParse'
 
 stmTerm :: Parser Stm
 stmTerm = compParse <|> try(whitespace *> stm)
