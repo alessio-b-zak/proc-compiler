@@ -297,7 +297,8 @@ call_ns_mixed :: EnvPExt -> Pname -> State -> (State, EnvPExt)
 call_ns_mixed (Inter envp) name s = stm_ns_mixed stm' envp1 s
                               where
                                 (stm', envp') = envp name
-                                envp1 = update_env_mixed envp' (name, stm') 
+                                envp1 = update_env_mixed envp' (name, stm')
+call_ns_mixed a@(Final envp) name s = stm_ns_mixed (envp name) a s
 
 stm_ns_mixed :: Stm -> EnvPExt -> State -> (State, EnvPExt)
 stm_ns_mixed (Ass var val) envp s       = (update_state (var, val) s, envp)
@@ -317,13 +318,12 @@ stm_ns_mixed (Comp stm1 stm2) envp s    =
 
 
 state_init :: State
-state_init "x" = 2
 state_init _   = -1
 
 state_error :: State
 state_error _ = -1
-
 envp_error :: EnvP
+
 envp_error _ = Skip
 
 envp_init :: EnvP
@@ -363,3 +363,40 @@ compile_aexp = do
       putStrLn (show evaluated_aexp)
     Nothing -> do
       putStrLn "Error Parsing"
+
+
+---Static Semantics Below
+
+type Loc = Integer
+type Next = Loc
+type Store = (Loc -> Z, Next)
+type EnvV = Var -> Loc
+type State' = (EnvV, Store)
+
+
+new :: Integer -> Integer
+new = succ
+
+update_envv :: Var -> EnvV -> Next -> EnvV
+update_envv var envv next = (\l -> if l == var
+                                    then next
+                                    else envv l)
+
+update_store :: Z -> Store -> Next -> Store
+update_store val store next = (store', new next)
+  where store' = (\l -> if l == next
+                          then val
+                          else (fst store) l)
+
+update_state_static :: State' -> (Var, Aexp) -> State'
+update_state_static state decv =
+  (update_envv (fst decv) envv next, update_store val store next)
+    where next  = snd(snd state)
+          envv  = fst state
+          store = snd state
+          state' = ((fst store).envv) -- fst store :: Loc -> Z
+          val   = aexp_ns (snd decv) state' --
+
+
+var_ns_static :: DecV -> State' -> State'
+var_ns_static decv state = foldl update_state_static state decv
