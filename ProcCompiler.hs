@@ -372,31 +372,101 @@ type Next = Loc
 type Store = (Loc -> Z, Next)
 type EnvV = Var -> Loc
 type State' = (EnvV, Store)
+type Env = (EnvP_Static, EnvV)
+data EnvP_Static = Inter'(Pname -> (Stm, EnvP_Static, EnvV, DecP))
+
 
 
 new :: Integer -> Integer
 new = succ
 
-update_envv :: Var -> EnvV -> Next -> EnvV
-update_envv var envv next = (\l -> if l == var
-                                    then next
+update_envv :: Var -> EnvV -> Loc -> EnvV
+update_envv var envv loc = (\l -> if l == var
+                                    then loc
                                     else envv l)
 
-update_store :: Z -> Store -> Next -> Store
-update_store val store next = (store', new next)
-  where store' = (\l -> if l == next
+update_store_var :: Z -> Loc -> Store -> Store
+update_store_var val loc store  = (store', snd store)
+  where store' = (\l -> if l == loc
                           then val
                           else (fst store) l)
 
+update_store_new :: Store -> Store
+update_store_new store = (fst store, new (snd store))
+
+-- update_state_static :: State' -> (Var, Aexp) -> State'
+-- update_state_static state decv =
+--   (update_envv (fst decv) envv next, update_store val store next)
+--     where next  = snd(snd state)
+--           envv  = fst state
+--           store = snd state
+--           state' = ((fst store).envv) -- fst store :: Loc -> Z
+--           val   = aexp_ns (snd decv) state' --
+
 update_state_static :: State' -> (Var, Aexp) -> State'
 update_state_static state decv =
-  (update_envv (fst decv) envv next, update_store val store next)
-    where next  = snd(snd state)
-          envv  = fst state
-          store = snd state
-          state' = ((fst store).envv) -- fst store :: Loc -> Z
-          val   = aexp_ns (snd decv) state' --
+  (update_envv (fst decv) envv next, update_store val next store)
+    where
+      envv  = fst state
+      store = snd state
+      next  = snd store
+      val = aexp_ns (snd decv) ((fst store).envv)
+      update_store x y z = update_store_new (update_store_var x y z)
+
+fold_dec_static :: DecV -> State' -> State'
+fold_dec_static decv state = foldl update_state_static state decv
+
+-- update_envp_static :: EnvP_Static -> (Pname, Stm) -> EnvP_Static
+-- update_envp_static b@(Inter' a) proc_name =
+--   Inter'((\l -> if l == fst proc_name
+--                   then (snd proc_name, b)
+--                   else (fst a) l
+--                   ), (snd a ))
+-- update_envp_static b@(Final' a) proc_name =
+--   Inter'((\l -> if l == fst proc_name
+--                  then (snd proc_name, b)
+--                  else ((fst a) l , b)), snd a)
+
+extract_envp (Inter' envp) = envp
 
 
-var_ns_static :: DecV -> State' -> State'
-var_ns_static decv state = foldl update_state_static state decv
+update_envp_static :: DecP -> EnvV -> EnvP_Static -> DecP -> EnvP_Static
+update_envp_static (x:xs) envv envp decp =
+  update_envp_static xs envv envp' decp
+    where
+      envp' = Inter'(\l -> if l == fst x
+                      then (snd x, envp, envv, decp)
+                      else (extract_envp envp) l)
+update_envp_static [] envv envp decp = envp
+
+
+update_prc_static :: DecP -> EnvV ->  EnvP_Static -> EnvP_Static
+update_prc_static decp envv envp =
+  update_envp_static decp envv envp decp
+
+
+ass_ns_static :: Stm -> Env -> Store -> (Store, Env)
+ass_ns_static (Ass var val) env sto = (update_store_var aval loc sto, env)
+ where
+   aval = aexp_ns val ((fst sto).(snd env))
+   loc = (snd env) var
+
+comp_ns_static :: Stm -> Env -> Store -> (Store, Env)
+comp_ns_static (Comp stm1 stm2) env store =
+  stm_ns_static stm2 env' store'
+    where
+      (store', env') = stm_ns_static stm1 env store
+
+if_ns_static :: Stm -> Env -> Store -> (Store, Env)
+if_ns_static (If b stm1 stm2) env sto =
+  if (bexp_ns b state')
+    then stm_ns_static stm1 env sto
+    else stm_ns_static stm2 env sto
+      where
+        state' = (fst sto).(snd env)
+
+
+
+
+stm_ns_static :: Stm -> Env -> Store -> (Store, Env)
+stm_ns_static = undefined
