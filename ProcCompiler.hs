@@ -465,7 +465,12 @@ if_ns_static (If b stm1 stm2) env sto =
       where
         state' = (fst sto).(snd env)
 
-
+while_ns_mixed :: Stm -> Env -> Store -> (Store, Env)
+while_ns_mixed y@(While bool stm) env sto =
+  let (sto', env') = stm_ns_static stm env sto
+  in if(bexp_ns bool ((fst sto).(snd env)))
+      then stm_ns_static y env' sto'
+      else (sto, env)
 
 
 stm_ns_static :: Stm -> Env -> Store -> (Store, Env)
