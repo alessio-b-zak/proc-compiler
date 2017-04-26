@@ -465,13 +465,27 @@ if_ns_static (If b stm1 stm2) env sto =
       where
         state' = (fst sto).(snd env)
 
-while_ns_mixed :: Stm -> Env -> Store -> (Store, Env)
-while_ns_mixed y@(While bool stm) env sto =
+while_ns_static :: Stm -> Env -> Store -> (Store, Env)
+while_ns_static y@(While bool stm) env sto =
   let (sto', env') = stm_ns_static stm env sto
   in if(bexp_ns bool ((fst sto).(snd env)))
       then stm_ns_static y env' sto'
       else (sto, env)
 
+block_ns_static :: Stm -> Env -> Store -> (Store, Env)
+block_ns_static (Block decv decp stm) env store =
+  stm_ns_static stm env' store'
+    where
+      (envv', store') = fold_dec_static decv (snd env, store)
+      env' = (update_prc_static decp envv' (fst env) , envv')
+
+call_ns_static :: Pname -> Env -> Store -> (Store, Env)
+call_ns_static proc_name env store =
+  stm_ns_static stm1 env' store
+    where
+      (stm1, envp, envv, decp) = (extract_envp (fst env) proc_name)
+      envp' = update_prc_static decp envv envp
+      env' = (envp', envv)
 
 stm_ns_static :: Stm -> Env -> Store -> (Store, Env)
 stm_ns_static = undefined
