@@ -373,7 +373,10 @@ type Store = (Loc -> Z, Next)
 type EnvV = Var -> Loc
 type State' = (EnvV, Store)
 type Env = (EnvP_Static, EnvV)
-data EnvP_Static = Inter'(Pname -> (Stm, EnvP_Static, EnvV, DecP))
+data EnvP_Static = Inter'(Pname -> (Stm, EnvP_Static, EnvV, DecP)) | Final' EnvP
+
+envp_init' :: EnvP_Static
+envp_init' = Final (\l -> Skip)
 
 store_init :: Store
 store_init = (store', 1)
@@ -535,7 +538,7 @@ extract_variables (Block decv decp stm) dec_vars =
     where
       dec_vars' = fold_variables_decp decp (fold_variables_decv decv dec_vars)
 
-extract_values_state ::  [String] -> State -> (Store, EnvV)
+extract_values_state :: [String] -> State -> (Store, EnvV)
 extract_values_state dec_vars state =
   foldl update_sto_env (store_init, envv_init) dec_vars
     where
@@ -545,7 +548,9 @@ extract_values_state dec_vars state =
           aval = state dec_var
 
 state_unwrapper :: State -> Stm -> (Store, Env)
-state_unwrapper state stm = undefined
+state_unwrapper state stm = (store', env')
+  where
+
 
 
 state_rewrapper :: (Store, Env) -> Stm -> State
