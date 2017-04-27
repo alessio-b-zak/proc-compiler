@@ -189,6 +189,10 @@ stm = skipParse
 parseProc :: Parser a -> String -> Maybe a
 parseProc x = parseMaybe x
 
+parse' :: String -> Stm
+parse' string = case parseProc bigstm string of
+                  Just x -> x
+                  Nothing -> error "invalid parse"
 
 type T = Bool
 type Z = Integer
@@ -237,7 +241,10 @@ fold_proc_mixed xs envp = foldl update_env_mixed envp xs
 
 block_ns_mixed :: Stm -> EnvPExt -> State -> (State, EnvPExt)
 block_ns_mixed (Block var_dec proc_dec stm) envp s  =
-  stm_ns_mixed stm (fold_proc_mixed proc_dec envp) (fold_dec var_dec s)
+  stm_ns_mixed stm (fold_proc_mixed proc_dec envp) state''
+    where
+      state' = (fold_dec var_dec s)
+      state'' = update_state_post_block var_dec s state'
 
 update_state :: (Var, Aexp) -> State ->  State
 update_state v s = (\l -> if l == (fst v)
@@ -266,9 +273,20 @@ fold_proc :: DecP -> EnvP -> EnvP
 fold_proc xs envp = foldr update_env envp xs
 
 
+update_state_post_block :: DecV -> State -> State -> State
+update_state_post_block (x:xs) state_pre state_post =
+  update_state_post_block xs state_pre state_post'
+    where
+      state_post' = update_state (fst x, (N (state_pre (fst x)))) state_post
+update_state_post_block [] state_pre state_post = state_post
+
+
 block_ns :: Stm -> EnvP -> State -> (State, EnvP)
 block_ns (Block var_dec proc_dec stm) envp s  =
-  stm_ns stm (fold_proc proc_dec envp) (fold_dec var_dec s)
+  stm_ns stm (fold_proc proc_dec envp) state''
+    where
+      state' = (fold_dec var_dec s)
+      state'' = update_state_post_block var_dec s state'
 
 
 stm_ns :: Stm -> EnvP -> State -> (State, EnvP)
@@ -506,6 +524,8 @@ stm_ns_static a@(While _ _) env store = while_ns_static a env store
 stm_ns_static a@(Block _ _ _) env store = block_ns_static a env store
 stm_ns_static (Call pname) env store = call_ns_static pname env store
 
+
+
 extract_variables_decv ::  [String] -> (Var, Aexp) -> [String]
 extract_variables_decv dec_vars var =
   if (elem (fst var) dec_vars)
@@ -520,20 +540,43 @@ fold_variables_decv decv dec_vars =
 extract_variables_decp :: [String] -> (Pname, Stm) -> [String]
 extract_variables_decp dec_vars procs = extract_variables (snd procs) dec_vars
 
+extract_arith :: Aexp -> [String] -> [String]
+extract_arith (N _) string = string
+extract_arith (V var) string = if elem var string
+                                then string
+                                else var:string
+extract_arith (Mult a1 a2) string = extract_arith a2 (extract_arith a1 string)
+extract_arith (Add a1 a2) string = extract_arith a2 (extract_arith a1 string)
+extract_arith (Sub a1 a2) string = extract_arith a2 (extract_arith a1 string)
+
+
+extract_bool :: Bexp -> [String] -> [String]
+extract bool (TRUE) string = string
+extract bool (FALSE) string = string
+extract_bool (Neg b1) string = extract_bool b1 string
+extract_bool (Le a1 a2) string = extract_arith a2 (extract_arith a1 string)
+extract_bool (Eq a1 a2) string = extract_arith a2 (extract_arith a1 string)
+extract_bool (And b1 b2) string = extract_bool b2 (extract_bool b1 string)
+
+
 fold_variables_decp :: DecP -> [String] -> [String]
 fold_variables_decp decp dec_vars = foldl extract_variables_decp dec_vars decp
 
 extract_variables :: Stm -> [String] -> [String]
-extract_variables (Ass var _) dec_vars =
-  if (elem var dec_vars)
-    then dec_vars
-    else var:dec_vars
+extract_variables (Ass var val) dec_vars =
+  if (elem var dec_vars')
+    then dec_vars'
+    else var:dec_vars'
+  where
+    dec_vars' = extract_arith val dec_vars
+
 extract_variables (Skip) dec_vars = dec_vars
 extract_variables (Comp stm1 stm2) dec_vars =
    extract_variables stm2 (extract_variables stm1 dec_vars)
-extract_variables (If _ stm1 stm2) dec_vars =
-  extract_variables stm2 (extract_variables stm1 dec_vars)
-extract_variables (While _ stm) dec_vars = extract_variables stm dec_vars
+extract_variables (If bool stm1 stm2) dec_vars =
+  extract_variables stm2 (extract_variables stm1 (extract_bool bool dec_vars))
+extract_variables (While bool stm) dec_vars =
+  extract_variables stm (extract_bool bool dec_vars)
 extract_variables (Call _) dec_vars = dec_vars
 extract_variables (Block decv decp stm) dec_vars =
   extract_variables stm dec_vars'
