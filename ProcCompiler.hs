@@ -318,7 +318,8 @@ stm_ns_mixed (Comp stm1 stm2) envp s    =
 
 
 state_init :: State
-state_init _   = -1
+state_init "x" = 5
+state_init _   = 0
 
 state_error :: State
 state_error _ = -1
@@ -380,7 +381,8 @@ envp_init' = Final' (\l -> Skip)
 
 store_init :: Store
 store_init = (store', 1)
-  where store' = \l -> -1
+  where
+    store' _ = 0
 
 envv_init :: EnvV
 envv_init _ = -1
@@ -562,3 +564,9 @@ s_static state stm = state_rewrapper result
   where
     (store, env) = state_unwrapper state stm
     result = stm_ns_static stm env store
+
+
+help_parser_static :: State -> String -> State
+help_parser_static state string = case parseProc bigstm string of
+                        Just x -> s_static state x
+                        Nothing -> state_error
