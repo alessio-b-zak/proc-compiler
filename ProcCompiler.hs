@@ -227,8 +227,7 @@ bexp_ns (Eq x y) s  = (aexp_ns x s) == (aexp_ns y s)
 --                           then x
 --                           else s l)
 
-
-update_env_mixed ::  EnvPExt -> (Pname, Stm) -> EnvPExt
+update_env_mixed :: EnvPExt -> (Pname, Stm) -> EnvPExt
 update_env_mixed a@(Inter envp) v = Inter(\l -> if l == fst v
                                                 then (snd v, a)
                                                 else (envp l))
@@ -241,10 +240,12 @@ fold_proc_mixed xs envp = foldl update_env_mixed envp xs
 
 block_ns_mixed :: Stm -> EnvPExt -> State -> (State, EnvPExt)
 block_ns_mixed (Block var_dec proc_dec stm) envp s  =
-  stm_ns_mixed stm (fold_proc_mixed proc_dec envp) state''
+  (state''', envp)
     where
+      envp' = (fold_proc_mixed proc_dec envp)
+      (state'',_) = stm_ns_mixed stm envp' state'
       state' = (fold_dec var_dec s)
-      state'' = update_state_post_block var_dec s state'
+      state''' = update_state_post_block var_dec s state''
 
 update_state :: (Var, Aexp) -> State ->  State
 update_state v s = (\l -> if l == (fst v)
@@ -280,13 +281,21 @@ update_state_post_block (x:xs) state_pre state_post =
       state_post' = update_state (fst x, (N (state_pre (fst x)))) state_post
 update_state_post_block [] state_pre state_post = state_post
 
+update_envp_post_block :: DecP -> EnvP -> EnvP -> EnvP
+update_envp_post_block (x:xs) envp_pre envp_post =
+  update_envp_post_block xs envp_pre envp_post'
+    where
+      envp_post' = update_env (fst x, envp_pre (fst x)) envp_post
+update_envp_post_block [] envp_pre envp_post = envp_post
 
 block_ns :: Stm -> EnvP -> State -> (State, EnvP)
 block_ns (Block var_dec proc_dec stm) envp s  =
-  stm_ns stm (fold_proc proc_dec envp) state''
+  (state''', envp)
     where
+      envp' = (fold_proc proc_dec envp)
       state' = (fold_dec var_dec s)
-      state'' = update_state_post_block var_dec s state'
+      (state'', _) = stm_ns stm envp' state'
+      state''' = update_state_post_block var_dec s state''
 
 
 stm_ns :: Stm -> EnvP -> State -> (State, EnvP)
@@ -336,7 +345,6 @@ stm_ns_mixed (Comp stm1 stm2) envp s    =
 
 
 state_init :: State
-state_init "x" = 5
 state_init _   = 0
 
 state_error :: State
@@ -501,9 +509,9 @@ while_ns_static y@(While bool stm) env sto =
       else (sto, env)
 
 block_ns_static :: Stm -> Env -> Store -> (Store, Env)
-block_ns_static (Block decv decp stm) env store =
-  stm_ns_static stm env' store'
+block_ns_static (Block decv decp stm) env store = (store'',  env)
     where
+      (store'', env1) = stm_ns_static stm env' store'
       (envv', store') = fold_dec_static decv (snd env, store)
       env' = (update_prc_static decp envv' (fst env) , envv')
 
@@ -523,8 +531,6 @@ stm_ns_static a@(If _ _ _) env store = if_ns_static a env store
 stm_ns_static a@(While _ _) env store = while_ns_static a env store
 stm_ns_static a@(Block _ _ _) env store = block_ns_static a env store
 stm_ns_static (Call pname) env store = call_ns_static pname env store
-
-
 
 extract_variables_decv ::  [String] -> (Var, Aexp) -> [String]
 extract_variables_decv dec_vars var =
@@ -569,7 +575,6 @@ extract_variables (Ass var val) dec_vars =
     else var:dec_vars'
   where
     dec_vars' = extract_arith val dec_vars
-
 extract_variables (Skip) dec_vars = dec_vars
 extract_variables (Comp stm1 stm2) dec_vars =
    extract_variables stm2 (extract_variables stm1 dec_vars)
