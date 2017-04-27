@@ -376,7 +376,7 @@ type Env = (EnvP_Static, EnvV)
 data EnvP_Static = Inter'(Pname -> (Stm, EnvP_Static, EnvV, DecP)) | Final' EnvP
 
 envp_init' :: EnvP_Static
-envp_init' = Final (\l -> Skip)
+envp_init' = Final' (\l -> Skip)
 
 store_init :: Store
 store_init = (store', 1)
@@ -550,8 +550,15 @@ extract_values_state dec_vars state =
 state_unwrapper :: State -> Stm -> (Store, Env)
 state_unwrapper state stm = (store', env')
   where
+    (store', envv') = extract_values_state (extract_variables stm []) state
+    env' = (envp_init', envv')
 
 
+state_rewrapper :: (Store, Env) -> State
+state_rewrapper store_env = ((fst(fst store_env)).(snd(snd store_env)))
 
-state_rewrapper :: (Store, Env) -> Stm -> State
-state_rewrapper = undefined
+s_static :: State -> Stm -> State
+s_static state stm = state_rewrapper result
+  where
+    (store, env) = state_unwrapper state stm
+    result = stm_ns_static stm env store
