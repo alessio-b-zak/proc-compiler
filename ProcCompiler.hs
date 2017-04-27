@@ -375,7 +375,12 @@ type State' = (EnvV, Store)
 type Env = (EnvP_Static, EnvV)
 data EnvP_Static = Inter'(Pname -> (Stm, EnvP_Static, EnvV, DecP))
 
+store_init :: Store
+store_init = (store', 1)
+  where store' = \l -> -1
 
+envv_init :: EnvV
+envv_init _ = -1
 
 new :: Integer -> Integer
 new = succ
@@ -488,4 +493,60 @@ call_ns_static proc_name env store =
       env' = (envp', envv)
 
 stm_ns_static :: Stm -> Env -> Store -> (Store, Env)
-stm_ns_static = undefined
+stm_ns_static a@(Ass _ _) env store = ass_ns_static a env store
+stm_ns_static (Skip) env store = (store, env)
+stm_ns_static a@(Comp _ _) env store = comp_ns_static a env store
+stm_ns_static a@(If _ _ _) env store = if_ns_static a env store
+stm_ns_static a@(While _ _) env store = while_ns_static a env store
+stm_ns_static a@(Block _ _ _) env store = block_ns_static a env store
+stm_ns_static (Call pname) env store = call_ns_static pname env store
+
+extract_variables_decv ::  [String] -> (Var, Aexp) -> [String]
+extract_variables_decv dec_vars var =
+  if (elem (fst var) dec_vars)
+    then dec_vars
+    else (fst var):dec_vars
+
+
+fold_variables_decv :: DecV -> [String] -> [String]
+fold_variables_decv decv dec_vars =
+  foldl extract_variables_decv dec_vars decv
+
+extract_variables_decp :: [String] -> (Pname, Stm) -> [String]
+extract_variables_decp dec_vars procs = extract_variables (snd procs) dec_vars
+
+fold_variables_decp :: DecP -> [String] -> [String]
+fold_variables_decp decp dec_vars = foldl extract_variables_decp dec_vars decp
+
+extract_variables :: Stm -> [String] -> [String]
+extract_variables (Ass var _) dec_vars =
+  if (elem var dec_vars)
+    then dec_vars
+    else var:dec_vars
+extract_variables (Skip) dec_vars = dec_vars
+extract_variables (Comp stm1 stm2) dec_vars =
+   extract_variables stm2 (extract_variables stm1 dec_vars)
+extract_variables (If _ stm1 stm2) dec_vars =
+  extract_variables stm2 (extract_variables stm1 dec_vars)
+extract_variables (While _ stm) dec_vars = extract_variables stm dec_vars
+extract_variables (Call _) dec_vars = dec_vars
+extract_variables (Block decv decp stm) dec_vars =
+  extract_variables stm dec_vars'
+    where
+      dec_vars' = fold_variables_decp decp (fold_variables_decv decv dec_vars)
+
+extract_values_state ::  [String] -> State -> (Store, EnvV)
+extract_values_state dec_vars state =
+  foldl update_sto_env (store_init, envv_init) dec_vars
+    where
+      update_sto_env sto_env dec_var = (store', envv')
+        where
+          (envv', store') = update_state_static ((snd sto_env), (fst sto_env)) (dec_var, N aval)
+          aval = state dec_var
+
+state_unwrapper :: State -> Stm -> (Store, Env)
+state_unwrapper state stm = undefined
+
+
+state_rewrapper :: (Store, Env) -> Stm -> State
+state_rewrapper = undefined
