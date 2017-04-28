@@ -97,7 +97,7 @@ rExpr = do
 
 
 relation = try(tok "=" *> pure Eq)
- <|> try(tok "<" *> pure Le)
+ <|> try(tok "<=" *> pure Le)
 
 bexpr :: Parser Bexp
 bexpr = makeExprParser bTerm bOperators
@@ -143,32 +143,27 @@ callParse :: Parser Stm
 callParse = (tok "call") *> (Call <$> vars) <* whitespace
 
 compParse :: Parser Stm
-compParse =  try((Comp  <$> stmParens <* tok ";") <* whitespace <*> bigstm)
-
-compParse' :: Parser Stm
-compParse' =  try((Comp  <$> stmParens <* tok ";") <* whitespace <*> bigstm')
+compParse =  try((Comp  <$> bigstm' <* tok ";") <* whitespace <*> bigstm)
 
 skipParse :: Parser Stm
 skipParse = Skip <$ tok "skip" <* whitespace
 
 stmParens :: Parser Stm
-stmParens = try(whitespace *> parens compParse)
+stmParens = try(whitespace *> parens bigstm)
          <|> try(whitespace *> stm)
          <|> try(whitespace *> parens stm)
 
 bigstm' :: Parser Stm
-bigstm' = try(whitespace *> parens bigstm')
-      <|> (whitespace *> stmTerm')
-
-stmTerm' :: Parser Stm
-stmTerm' = try(whitespace *> stm) <|> compParse'
+bigstm' = try(whitespace *> parens bigstm)
+      <|> (whitespace *> stm)
 
 stmTerm :: Parser Stm
-stmTerm = compParse <|> try(whitespace *> stm)
+stmTerm = try(whitespace *> compParse) <|> try(whitespace *> stm)
 
 bigstm :: Parser Stm
-bigstm = try(whitespace *> parens bigstm)
-      <|> (whitespace *> stmTerm)
+bigstm = (whitespace *> stmTerm)
+      <|> try(whitespace *> parens bigstm)
+
 
 -- stm :: Parser Stm
 -- stm = Skip <$ tok "skip" <* whitespace
@@ -516,9 +511,9 @@ block_ns_static (Block decv decp stm) env store = (store'',  env)
       env' = (update_prc_static decp envv' (fst env) , envv')
 
 call_ns_static :: Pname -> Env -> Store -> (Store, Env)
-call_ns_static proc_name env store =
-  stm_ns_static stm1 env' store
+call_ns_static proc_name env store = (store', env)
     where
+      (store', _) = stm_ns_static stm1 env' store
       (stm1, envp, envv, decp) = (extract_envp (fst env) proc_name)
       envp' = update_prc_static decp envv envp
       env' = (envp', envv)
