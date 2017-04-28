@@ -193,7 +193,8 @@ type T = Bool
 type Z = Integer
 type State = Var -> Z
 type EnvP = Pname -> Stm
-data EnvPExt = Inter(Pname -> (Stm, EnvPExt)) | Final EnvP
+-- data EnvPExt = Inter(Pname -> (Stm, EnvPExt)) | Final EnvP
+data EnvPExt = Inter(Pname -> (Stm, EnvPExt, DecP)) | Final EnvP
 type Config = (State, EnvP)
 
 aexp_ns :: Aexp -> State -> Z
@@ -222,22 +223,34 @@ bexp_ns (Eq x y) s  = (aexp_ns x s) == (aexp_ns y s)
 --                           then x
 --                           else s l)
 
-update_env_mixed :: EnvPExt -> (Pname, Stm) -> EnvPExt
-update_env_mixed a@(Inter envp) v = Inter(\l -> if l == fst v
-                                                then (snd v, a)
-                                                else (envp l))
-update_env_mixed a@(Final envp) v = Inter(\l -> if l == fst v
-                                              then (snd v, a)
-                                              else (envp (fst v), a))
+update_envp_mixed :: DecP -> EnvPExt -> DecP -> EnvPExt
+update_envp_mixed (x:xs) envp decp =
+  update_envp_mixed xs envp' decp
+    where
+      envp' = Inter(\l -> if l == fst x
+                              then (snd x, envp, decp)
+                              else extract_envp' envp l)
+update_envp_mixed [] envp decp = envp
 
-fold_proc_mixed :: DecP -> EnvPExt -> EnvPExt
-fold_proc_mixed xs envp = foldl update_env_mixed envp xs
+update_prc_mixed :: DecP -> EnvPExt -> EnvPExt
+update_prc_mixed decp envp = update_envp_mixed decp envp decp
+
+-- update_env_mixed :: EnvPExt -> (Pname, Stm) -> EnvPExt
+-- update_env_mixed a@(Inter envp) v = Inter(\l -> if l == fst v
+--                                                 then (snd v, a)
+--                                                 else (envp l))
+-- update_env_mixed a@(Final envp) v = Inter(\l -> if l == fst v
+--                                               then (snd v, a)
+--                                               else (envp (fst v), a))
+
+-- fold_proc_mixed :: DecP -> EnvPExt -> EnvPExt
+-- fold_proc_mixed xs envp = foldl update_env_mixed envp xs
 
 block_ns_mixed :: Stm -> EnvPExt -> State -> (State, EnvPExt)
 block_ns_mixed (Block var_dec proc_dec stm) envp s  =
   (state''', envp)
     where
-      envp' = (fold_proc_mixed proc_dec envp)
+      envp' = (update_prc_mixed proc_dec envp)
       (state'',_) = stm_ns_mixed stm envp' state'
       state' = (fold_dec var_dec s)
       state''' = update_state_post_block var_dec s state''
@@ -309,18 +322,29 @@ stm_ns (Comp stm1 stm2) envp s    =
     where
       (s', envp') = stm_ns stm1 envp s
 
+extract_envp' (Inter a) = a
 
-extract_state :: EnvPExt -> Pname -> (Stm, EnvPExt)
-extract_state (Inter envp) name = envp name
-extract_state a@(Final envp) name = (envp name, a)
+call_ns_mixed' :: EnvPExt -> Pname -> State -> (State, EnvPExt)
+call_ns_mixed' envp proc_name state = (state', envp)
+  where
+    (state', _) = stm_ns_mixed stm env' state
+    (stm, envp, decp) = (extract_envp' (envp) proc_name)
+    env' = update_prc_mixed decp envp
 
 
 call_ns_mixed :: EnvPExt -> Pname -> State -> (State, EnvPExt)
-call_ns_mixed (Inter envp) name s = stm_ns_mixed stm' envp1 s
-                              where
-                                (stm', envp') = envp name
-                                envp1 = update_env_mixed envp' (name, stm')
-call_ns_mixed a@(Final envp) name s = stm_ns_mixed (envp name) a s
+call_ns_mixed env proc_name state = (state', env)
+  where
+    (state',_) = stm_ns_mixed stm1 env' state
+    (stm1, envp, decp) = (extract_envp' env proc_name)
+    env' = update_prc_mixed decp envp
+
+-- call_ns_mixed :: EnvPExt -> Pname -> State -> (State, EnvPExt)
+-- call_ns_mixed (Inter envp) name s = stm_ns_mixed stm' envp1 s
+--                               where
+--                                 (stm', envp') = envp name
+--                                 envp1 = update_env_mixed envp' (name, stm')
+-- call_ns_mixed a@(Final envp) name s = stm_ns_mixed (envp name) a s
 
 stm_ns_mixed :: Stm -> EnvPExt -> State -> (State, EnvPExt)
 stm_ns_mixed (Ass var val) envp s       = (update_state (var, val) s, envp)
@@ -340,6 +364,7 @@ stm_ns_mixed (Comp stm1 stm2) envp s    =
 
 
 state_init :: State
+state_init "x" = 5
 state_init _   = 0
 
 state_error :: State
